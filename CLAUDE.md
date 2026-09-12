@@ -26,7 +26,8 @@ Tableau Public is a separate, manually-built deliverable, not part of this codeb
 ## Planned Build Order
 1. SEC EDGAR data pipeline (all three companies) — done
 2. SQL layer on the cleaned data — done
-3. Streamlit app shell, deployed early — CURRENT STEP
-4. Metrics/judgment content, NPV + Monte Carlo engine
+3. Streamlit app shell, deployed early — done
+4. Metrics/judgment content, NPV + Monte Carlo engine — metrics half done
+   (Metrics & Judgment Calls page); NPV + Monte Carlo engine still pending — CURRENT STEP
 5. Real-data aggregate model + labeled-synthetic classifier
 6. Multi-agent LLM assistant (Simulation Agent + Data Analyst Agent + Orchestrator)

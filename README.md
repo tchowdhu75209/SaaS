@@ -57,11 +57,21 @@ any DuckDB client, not just through this CLI):
 | `data_quality_summary` | Per-company counts of recast/derived-Q4/caveated/missing quarters. |
 | `companies_overview` | The three companies (ticker, name, CIK) -- used by the Streamlit Home page. |
 | `revenue_by_quarter` | Raw quarterly revenue (no growth math) -- used by the Home page's chart. |
+| `leverage_and_liquidity` | Net debt and debt/TTM-revenue leverage per company per quarter -- used by the Metrics & Judgment Calls page. |
 
 Each growth/margin query includes a `growth_may_be_unreliable` /
 `margin_may_be_unreliable` column: true if either endpoint of the calculation is
 `[RECAST]`-flagged or carries a `data_caveat` (e.g. any EchoStar comparison spanning
 its Dec 2023 DISH merger, below) -- the row is still shown, never hidden, just marked.
+
+`leverage_and_liquidity` divides `total_debt` by **trailing-twelve-month (TTM)
+revenue**, not a single quarter's revenue -- dividing an annual-scale balance-sheet
+figure by one quarter's revenue overstates the ratio ~4x (verified: Charter's naive
+single-quarter debt/revenue is 6.95x vs. a real 1.73x on a TTM basis). Its
+`ttm_window_incomplete` flag needed a real fix during review: an initial version
+compared `period_end(t)` to `period_end(t-3)`, which is only a ~9-month gap (3
+quarter-boundaries between four quarter-end dates), not the ~12-month span the window
+actually covers -- fixed by comparing against `period_start(t-3)` instead.
 `revenue_yoy_growth`/`revenue_qoq_growth` also flag `date_gap_mismatch`: a handful of
 quarters are entirely absent from the row sequence (CMCSA/ECHO, 2007-2009, before
 SEC's XBRL mandate fully phased in), so `LAG(revenue, N)` alone can't be trusted to
@@ -86,9 +96,15 @@ by wrapping every check in `COALESCE(..., FALSE)` in `load_db.py`.
   across all three, the real `data_quality_summary` results, and the two caveats above
   surfaced directly in the UI (not just here in README prose). Everything on this page
   is pulled from the saved queries in `sql/` -- nothing fabricated or placeholder.
-- **`pages/`** -- four honest placeholder pages for CLAUDE.md steps 4-6 (Metrics &
-  Judgment Calls, Monte Carlo Simulation, Predictive Models, LLM Assistant): a title
-  and an explicit "not built yet," no invented charts or numbers.
+- **`pages/1_Metrics_and_Judgment_Calls.py`** -- real content (step 4's metrics half):
+  revenue growth, operating margin, and leverage/liquidity for all three companies,
+  each with a written verdict that names all three, a latest-quarter side-by-side
+  snapshot, and an explicit "what this page can't show" section (subscriber/ARPU/
+  churn data doesn't exist in XBRL at all; EBITDA/FCF/capex data wasn't extracted in
+  step 1 but could be; NPV is on the Monte Carlo page instead).
+- **`pages/2-4`** -- still honest placeholders for CLAUDE.md steps 4 (NPV + Monte
+  Carlo)-6 (Predictive Models, LLM Assistant): a title and an explicit "not built
+  yet," no invented charts or numbers.
 - **`app_common.py`** -- shared helpers every page uses: `ensure_database()` and a
   cached `cached_query(name)` wrapper around `run_saved_query()`.
 
