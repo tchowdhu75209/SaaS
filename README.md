@@ -100,8 +100,9 @@ by wrapping every check in `COALESCE(..., FALSE)` in `load_db.py`.
   revenue growth, operating margin, and leverage/liquidity for all three companies,
   each with a written verdict that names all three, a latest-quarter side-by-side
   snapshot, and an explicit "what this page can't show" section (subscriber/ARPU/
-  churn data doesn't exist in XBRL at all; EBITDA/FCF/capex data wasn't extracted in
-  step 1 but could be; NPV is on the Monte Carlo page instead).
+  churn data doesn't exist in XBRL at all, for any of the three; free cash flow/capex
+  weren't extracted in step 1 but could be; EBITDA is **per-company**, not a blanket
+  gap -- see "Custom XBRL tags" below; NPV is on the Monte Carlo page instead).
 - **`pages/2-4`** -- still honest placeholders for CLAUDE.md steps 4 (NPV + Monte
   Carlo)-6 (Predictive Models, LLM Assistant): a title and an explicit "not built
   yet," no invented charts or numbers.
@@ -200,6 +201,33 @@ phased in for large accelerated filers around fiscal periods ending after June 1
 2009. A handful of quarters in 2006-2010 (and a few derived-Q4 gaps where an
 underlying Q1-Q3 discrete value is missing) are genuinely absent from XBRL, not a
 pipeline bug -- each is logged when `build-csv` runs.
+
+**Custom XBRL tags exist outside this pipeline's reach -- confirmed, not assumed.**
+The `companyfacts` API this entire pipeline reads structurally excludes
+company-specific extension tags (anything outside the standard `us-gaap`/`dei`
+namespaces) -- confirmed empirically: EchoStar's real Q3 2025 impairment charge
+doesn't appear anywhere in its companyfacts JSON, only in the filing itself. A
+systematic scan of every 10-K (full history) and the last 2 fiscal years' 10-Qs for
+all three companies, fetched directly from each filing's own inline-XBRL document,
+found:
+- **Comcast discloses its own "Adjusted EBITDA"** as a custom tag every quarter and
+  year (~$10.2B for Q3 2025 alone, ~$34-40B annually in recent 10-Ks).
+- **EchoStar tags a segment-level OIBDA-style figure**
+  (`sats:OperatingIncomeLossBeforeDepreciationAndAmortization`).
+- **Charter has no equivalent tag anywhere in its primary 10-K/10-Q filings** -- for
+  Charter specifically, EBITDA really is unavailable via XBRL, not just unextracted.
+- EchoStar's Q3 2025 impairment resolved fully: the FY2025 10-K's annual total is
+  **$17.63B** -- the same $16.48B nine-month charge (see the Metrics page's callout)
+  plus ~$1.15B more added in Q4 2025, plus a separate, much smaller **$761M**
+  impairment in FY2023. No second mega-event; the rest of the ~250 other
+  consolidated custom tags found in the scan are routine footnote/schedule detail
+  (debt maturity ladders, film/programming cost rollforwards, tax reconciliation,
+  lease schedules), not additional hidden headline metrics.
+
+None of this is pulled into the warehouse yet -- doing so needs a new fetch
+mechanism entirely (scraping each filing's inline XBRL directly, since the
+companyfacts API can't see custom tags at all), which is future work, not attempted
+here.
 
 ## Two real XBRL mechanics this pipeline had to handle
 

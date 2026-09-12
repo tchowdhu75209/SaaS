@@ -158,11 +158,26 @@ st.warning(
     "tables inside the filing text, not as structured facts."
 )
 st.warning(
-    "**EBITDA margin, free cash flow, capex intensity, Debt/EBITDA** — not computable "
-    "from the *current* warehouse, but unlike the subscriber gap, this one is fixable: "
-    "step 1's `extract.py` never pulled the underlying depreciation/amortization, "
-    "capex, or operating-cash-flow XBRL tags. Extending the pipeline to pull them is "
-    "future work, not a limitation of the data itself."
+    "**Free cash flow, capex intensity** — not computable from the *current* "
+    "warehouse for any of the three companies: step 1's `extract.py` never pulled "
+    "the underlying capex or operating-cash-flow XBRL tags. Fixable by extending the "
+    "pipeline, not a limitation of the data itself."
+)
+st.warning(
+    "**EBITDA — correction, not a blanket gap**: an earlier version of this page said "
+    "EBITDA wasn't computable at all. That was checked against the wrong source. A "
+    "systematic scan of each company's actual filings (not the companyfacts API, "
+    "which structurally excludes custom/company-specific XBRL tags — confirmed "
+    "empirically, not assumed) found that **Comcast discloses its own \"Adjusted "
+    "EBITDA\" as a custom tag every quarter and year** (~$10.2B for Q3 2025 alone, "
+    "~$34-40B annually in recent 10-Ks) and **EchoStar tags a segment-level OIBDA-"
+    "style figure** (`OperatingIncomeLossBeforeDepreciationAndAmortization`) — "
+    "neither is in this warehouse yet, but both genuinely exist in the source "
+    "filings. **Charter has no equivalent tag anywhere in its primary 10-K/10-Q "
+    "filings** — for Charter specifically, EBITDA really is unavailable via XBRL, not "
+    "just unextracted. Pulling the Comcast/EchoStar figures into the pipeline is "
+    "future work (would need a new fetch mechanism, since the companyfacts API can't "
+    "see custom tags at all) — not attempted on this page yet."
 )
 st.warning(
     "**NPV** — deliberately out of scope for this page. See **🎲 Monte Carlo "
