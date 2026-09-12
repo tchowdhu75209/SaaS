@@ -1,10 +1,12 @@
-# SEC EDGAR XBRL Pipeline + SQL Layer
+# SEC EDGAR XBRL Pipeline + SQL Layer + Streamlit App
 
-Steps 1-2 of the Subscriber Economics Analytics Platform (see [CLAUDE.md](CLAUDE.md)):
+Steps 1-3 of the Subscriber Economics Analytics Platform (see [CLAUDE.md](CLAUDE.md)):
 step 1 pulls quarterly revenue, operating income, total debt, and cash for EchoStar
 (ECHO), Charter Communications (CHTR), and Comcast (CMCSA) directly from SEC EDGAR's
 XBRL `companyfacts` API and combines them into one tidy CSV; step 2 loads that CSV
-into a queryable DuckDB warehouse with a handful of saved analysis queries.
+into a queryable DuckDB warehouse with a handful of saved analysis queries; step 3 is
+a Streamlit app shell with a real Home page and placeholder pages for what's still to
+come.
 
 ## Running it
 
@@ -51,11 +53,60 @@ any DuckDB client, not just through this CLI):
 | `revenue_qoq_growth` | Quarter-over-quarter revenue growth %. |
 | `operating_margin_trend` | `operating_income / revenue` per company per quarter. |
 | `data_quality_summary` | Per-company counts of recast/derived-Q4/caveated/missing quarters. |
+| `companies_overview` | The three companies (ticker, name, CIK) -- used by the Streamlit Home page. |
+| `revenue_by_quarter` | Raw quarterly revenue (no growth math) -- used by the Home page's chart. |
 
 Each growth/margin query includes a `growth_may_be_unreliable` /
 `margin_may_be_unreliable` column: true if either endpoint of the calculation is
 `[RECAST]`-flagged or carries a `data_caveat` (e.g. any EchoStar comparison spanning
 its Dec 2023 DISH merger, below) -- the row is still shown, never hidden, just marked.
+`revenue_yoy_growth`/`revenue_qoq_growth` also flag `date_gap_mismatch`: a handful of
+quarters are entirely absent from the row sequence (CMCSA/ECHO, 2007-2009, before
+SEC's XBRL mandate fully phased in), so `LAG(revenue, N)` alone can't be trusted to
+mean "N quarters back" -- both queries verify the actual `period_end` gap is ~365 days
+(YoY) or ~90 days (QoQ) before treating a comparison as reliable.
+
+**A real bug caught and fixed while building step 3**: `is_recast`/`is_derived_q4` in
+`v_quarterly_financials` used plain `OR` across several `... LIKE '...'` checks. SQL's
+three-valued logic means `NULL LIKE '...'` is `NULL`, and `NULL OR FALSE` is `NULL`
+(not `FALSE`) -- so any quarter where one of the `*_tag` columns was simply null (that
+metric wasn't tagged that period, unrelated to any recast) made `is_recast` come out
+`NULL` instead of `FALSE`, unless another tag column happened to force it `TRUE`. Fixed
+by wrapping every check in `COALESCE(..., FALSE)` in `load_db.py`.
+
+## Streamlit app
+
+```bash
+.venv/bin/streamlit run app.py
+```
+
+- **`app.py`** -- Home/Overview page: the three companies, a revenue-over-time chart
+  across all three, the real `data_quality_summary` results, and the two caveats above
+  surfaced directly in the UI (not just here in README prose). Everything on this page
+  is pulled from the saved queries in `sql/` -- nothing fabricated or placeholder.
+- **`pages/`** -- four honest placeholder pages for CLAUDE.md steps 4-6 (Metrics &
+  Judgment Calls, Monte Carlo Simulation, Predictive Models, LLM Assistant): a title
+  and an explicit "not built yet," no invented charts or numbers.
+- **`app_common.py`** -- shared helpers every page uses: `ensure_database()` and a
+  cached `cached_query(name)` wrapper around `run_saved_query()`.
+
+**Why the app can build its own warehouse on startup**: `data/warehouse.duckdb` is
+git-ignored (see above), so a fresh clone -- including a Streamlit Community Cloud
+deploy -- won't have one. `ensure_database()` calls step 2's `load_database()` to build
+it from the tracked CSV if it's missing, so the app works identically locally and on a
+fresh Cloud checkout with no extra setup. Verified by deleting `data/warehouse.duckdb`
+and confirming the app rebuilds it automatically on the next run.
+
+### Deploying to Streamlit Community Cloud
+1. Push to GitHub (already done -- `tchowdhu75209/SaaS`, branch `main`).
+2. On [share.streamlit.io](https://share.streamlit.io): New app -> pick that repo and
+   branch, set **main file path to `app.py`** (Cloud defaults to looking for
+   `streamlit_app.py` if this isn't set explicitly).
+3. Cloud installs from the root `requirements.txt` automatically -- already includes
+   `streamlit`. No other config is needed; `ensure_database()` handles the warehouse.
+4. The deployed app only reflects what's committed to `main`. Pulling fresh SEC data
+   means re-running `fetch` -> `build-csv` locally and pushing the updated CSV -- the
+   Cloud app doesn't refresh live data on its own.
 
 ## CSV columns
 

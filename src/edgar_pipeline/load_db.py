@@ -88,20 +88,28 @@ def load_database(csv_path: Path = DEFAULT_CSV_PATH, db_path: Path = DEFAULT_DB_
         # Convenience booleans so every saved query can filter/flag on these without
         # repeating the same string-matching logic -- built from the raw *_tag and
         # data_caveat columns, which stay untouched in quarterly_financials itself.
+        #
+        # Every LIKE check is wrapped in COALESCE(..., FALSE): SQL's three-valued
+        # logic means `NULL LIKE '...'` is NULL, and `NULL OR FALSE` is NULL too (not
+        # FALSE) -- so without the COALESCE, any quarter where e.g. cash_tag is null
+        # (that metric just wasn't tagged that period, unrelated to any recast) would
+        # make is_recast come out NULL instead of FALSE, unless another tag column
+        # happened to force it TRUE. Confirmed this actually happened before this fix:
+        # `SELECT NULL LIKE '%x%' OR FALSE` returns NULL in DuckDB.
         con.execute(
             """
             CREATE VIEW v_quarterly_financials AS
             SELECT
                 *,
                 (
-                    revenue_tag LIKE '%[RECAST]%'
-                    OR operating_income_tag LIKE '%[RECAST]%'
-                    OR total_debt_tag LIKE '%[RECAST]%'
-                    OR cash_tag LIKE '%[RECAST]%'
+                    COALESCE(revenue_tag LIKE '%[RECAST]%', FALSE)
+                    OR COALESCE(operating_income_tag LIKE '%[RECAST]%', FALSE)
+                    OR COALESCE(total_debt_tag LIKE '%[RECAST]%', FALSE)
+                    OR COALESCE(cash_tag LIKE '%[RECAST]%', FALSE)
                 ) AS is_recast,
                 (
-                    revenue_tag LIKE 'derived:%'
-                    OR operating_income_tag LIKE 'derived:%'
+                    COALESCE(revenue_tag LIKE 'derived:%', FALSE)
+                    OR COALESCE(operating_income_tag LIKE 'derived:%', FALSE)
                 ) AS is_derived_q4,
                 (data_caveat IS NOT NULL) AS has_data_caveat
             FROM quarterly_financials

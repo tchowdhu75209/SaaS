@@ -24,9 +24,9 @@ Python, SQL (SQLite or DuckDB), Streamlit (deployed to Streamlit Community Cloud
 Tableau Public is a separate, manually-built deliverable, not part of this codebase.
 
 ## Planned Build Order
-1. SEC EDGAR data pipeline (all three companies) — CURRENT STEP
-2. SQL layer on the cleaned data
-3. Streamlit app shell, deployed early
+1. SEC EDGAR data pipeline (all three companies) — done
+2. SQL layer on the cleaned data — done
+3. Streamlit app shell, deployed early — CURRENT STEP
 4. Metrics/judgment content, NPV + Monte Carlo engine
 5. Real-data aggregate model + labeled-synthetic classifier
 6. Multi-agent LLM assistant (Simulation Agent + Data Analyst Agent + Orchestrator)
