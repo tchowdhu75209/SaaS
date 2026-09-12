@@ -67,15 +67,28 @@ st.markdown(
 **Verdict**: **Charter** runs the highest and steadiest operating margin of the three,
 consistently in the low-to-mid 20s% over the last year. **Comcast** runs a lower but
 still solidly positive margin, roughly 11-18% over the same period. **EchoStar** is the
-outlier and it's a real, disclosed event, not a data error: EchoStar posted an
-operating margin of **-460%** in Q3 2025 (operating income of -$16.6B on $3.6B of
-revenue) — verified this flows consistently through `NetIncomeLoss`, `ProfitLoss`, and
-`ComprehensiveIncomeNetOfTax` too, not an isolated tag, so it's a genuine one-time
-charge (almost certainly a large impairment), not an extraction artifact. EchoStar's
-margin recovered to positive territory by Q1-Q2 2026 (+10.7%, +14.3%). Reading
-EchoStar's margin trend without knowing about that one quarter would be actively
-misleading — flagging it here rather than smoothing it out of the chart.
+clear outlier, driven by one specific quarter explained in the callout just below —
+outside that quarter, its margin recovered to positive territory by Q1-Q2 2026
+(+10.7%, +14.3%).
 """
+)
+
+st.warning(
+    "**EchoStar's Q3 2025 -460% operating margin, explained**: operating income of "
+    "-$16.6B on $3.6B of revenue that quarter, driven by a **$16.48B non-cash "
+    "\"Impairments and other\" charge** — confirmed directly from EchoStar's Q3 2025 "
+    "10-Q (filed 2025-11-06, accession 0001104659-25-107277), not inferred from XBRL "
+    "tags alone. What happened: following EchoStar's 2025 spectrum sales to **AT&T** "
+    "and **SpaceX**, it began abandoning/decommissioning the portions of its 5G "
+    "network that won't be used in its now-smaller \"Hybrid MNO\" business model. "
+    "Under GAAP, that's a triggering event requiring an impairment test — so EchoStar "
+    "tested its *remaining* (unsold) wireless spectrum licenses and related 5G assets "
+    "(network equipment, leased assets, capitalized software) individually, and their "
+    "fair value came in below book value. Notably, spectrum actually included in the "
+    "AT&T/SpaceX sales was **not** impaired — its value was validated by the real "
+    "sale price; it's specifically the leftover, unsold spectrum that took the "
+    "write-down. This is a real, disclosed, non-cash event — not a data extraction "
+    "error, and not representative of EchoStar's ongoing operating performance."
 )
 
 # --- 3. Leverage & liquidity -----------------------------------------------------
