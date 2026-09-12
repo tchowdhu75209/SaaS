@@ -1,0 +1,109 @@
+# SEC EDGAR XBRL Pipeline
+
+Step 1 of the Subscriber Economics Analytics Platform (see [CLAUDE.md](CLAUDE.md)):
+pulls quarterly revenue, operating income, total debt, and cash for EchoStar (ECHO),
+Charter Communications (CHTR), and Comcast (CMCSA) directly from SEC EDGAR's XBRL
+`companyfacts` API, and combines them into one tidy CSV.
+
+## Running it
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+
+.venv/bin/python -m src.edgar_pipeline.main fetch      # pull + save raw JSON for all 3 companies
+.venv/bin/python -m src.edgar_pipeline.main build-csv   # extract from latest raw snapshots -> CSV
+.venv/bin/python -m src.edgar_pipeline.main run         # both, in sequence
+```
+
+Output: `data/processed/combined_quarterly.csv` -- one row per company per fiscal
+quarter. Raw, untouched API responses are saved to `data/raw/{TICKER}_companyfacts_
+{date}.json` before any processing, one snapshot per pull date, kept forever.
+
+## CSV columns
+
+| Column | Meaning |
+|---|---|
+| `revenue`, `operating_income`, `total_debt`, `cash` | The four financial figures, in USD. |
+| `{concept}_tag` | The exact XBRL element that value came from (see below) -- always present alongside the value so every number traces back to a specific filing. |
+| `subscribers` | Always null (see "No subscriber data" below). |
+| `source_accn`, `source_form`, `filed_date` | The SEC accession number, form type, and filing date behind the row (representative, from whichever concept anchors it -- look up the exact per-metric filing via the `_tag` column + EDGAR full-text search if needed). |
+| `data_caveat` | Set on EchoStar rows before 2024 -- see "EchoStar's 2023 merger" below. |
+
+## Tag mapping (verified against real filings, not generic XBRL docs)
+
+Different companies tag the same concept with different XBRL elements, and a company
+can switch tags over time. Each concept in `config.py`'s `TAG_MAP` is a
+priority-ordered list; `extract.py` tries each tag in order and uses whichever has
+data for a given period (a later filing under the same tag is preferred, unless
+flagged `[RECAST]` -- see below).
+
+- **Revenue**: `RevenueFromContractWithCustomerExcludingAssessedTax` →
+  `RevenueFromContractWithCustomerIncludingAssessedTax` → `Revenues` (pre-ASC606) →
+  `SalesRevenueNet` (EchoStar's own pre-2016 tag).
+  **Exception**: Charter's `...IncludingAssessedTax` tag is NOT their total revenue --
+  it's a small, separate ~$0.9-1.1B/year line item. Charter's real revenue has always
+  lived under the plain `Revenues` tag (274 facts, full history). This is a verified
+  per-company override in `config.py`'s `COMPANY_TAG_OVERRIDES`, not a guess.
+- **Operating income**: `OperatingIncomeLoss` -- identical across all three, no
+  fallback needed.
+- **Total debt**: `LongTermDebtAndCapitalLeaseObligationsIncludingCurrentMaturities` →
+  `LongTermDebt` → `DebtAndCapitalLeaseObligations` (Comcast's real primary tag for
+  its entire history, and EchoStar's tag for 2024 Q2-Q3) →
+  `LongTermDebtAndCapitalLeaseObligations` (a noncurrent-only figure when no separate
+  current-maturities tag exists that period -- may understate true total debt) →
+  computed `current + noncurrent` component sum → `LongTermDebtNoncurrent` alone as a
+  last resort (Charter's 2011-2014 filings never tagged a current-maturities figure at
+  all).
+- **Cash**: `CashAndCashEquivalentsAtCarryingValue` →
+  `CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents` (includes restricted
+  cash; only used if the plain balance is missing).
+
+## Known data caveats (real limitations, documented rather than hidden or faked)
+
+**No subscriber or churn data.** Searched every taxonomy in all three companies' real
+`companyfacts` JSON for anything matching `subscriber|churn` -- zero hits. None of
+these three companies tag subscriber counts in XBRL; that data only exists as
+prose/tables inside the filing text. The `subscribers` column is emitted and always
+null rather than silently dropped. Getting real subscriber figures requires a
+separate, later step that parses the filing text itself.
+
+**EchoStar's 2023 DISH merger is a structural break, not a data-quality bug.**
+EchoStar's Dec 2023 merger with DISH Network was accounted for as a reverse merger, so
+EchoStar's FY2023 10-K retroactively recast 2021-2023 comparatives to DISH's much
+larger history (verified: FY2021 revenue was $1.99B as originally filed, $19.8B as
+recast). Pre-merger EchoStar was a Hughes-broadband-and-satellite-technology company
+only, nowhere near the Pay-TV/Wireless/Broadband company described in CLAUDE.md --
+that description only applies from the merger close (Dec 2023) onward. Two mechanisms
+flag this in the data:
+1. Any single XBRL tag whose value swung >=2x between its earliest and latest filed
+   value gets `[RECAST]` appended to its `_tag` column (a real, generic detector --
+   not EchoStar-specific -- for "this looks like an accounting-entity change, not a
+   routine restatement").
+2. Every EchoStar row for a period ending before 2024-01-01 also carries an explicit
+   `data_caveat` note, since the recast doesn't always leave two versions of the same
+   tag to compare (sometimes a tag is only ever reported once, already recast).
+
+**Practical implication for analysis**: don't treat EchoStar's quarterly series as one
+continuous company across the 2023/2024 boundary. Real multi-company comparison
+(Pay-TV + Broadband + Wireless, per CLAUDE.md) is only meaningful from FY2024 Q1
+onward.
+
+**Sparse pre-2010 coverage across all three companies.** The SEC's XBRL mandate only
+phased in for large accelerated filers around fiscal periods ending after June 15,
+2009. A handful of quarters in 2006-2010 (and a few derived-Q4 gaps where an
+underlying Q1-Q3 discrete value is missing) are genuinely absent from XBRL, not a
+pipeline bug -- each is logged when `build-csv` runs.
+
+## Two real XBRL mechanics this pipeline had to handle
+
+1. **Duration facts appear twice per 10-Q**: once as a year-to-date cumulative figure,
+   once as the discrete 3-month figure, both under the same `fp` label. The only
+   reliable signal is the actual `end - start` span (~80-100 days = discrete quarter).
+   No company ever files a discrete Q4 (10-Ks only report the full year), so Q4 is
+   derived as `FY total - (Q1 + Q2 + Q3)`, and skipped (left null, logged) if any of
+   Q1-Q3 is missing.
+2. **Restatements**: the same historical period can appear more than once across
+   filings. The latest-filed value is kept as the current, most-authoritative figure
+   -- except when flagged `[RECAST]` (see above), which signals the swing is too large
+   to be a routine correction.
