@@ -1,5 +1,7 @@
 # SEC EDGAR XBRL Pipeline + SQL Layer + Streamlit App
 
+**🔗 Live app: [4eg3mmnwcr6sm3wyqbnluo.streamlit.app](https://4eg3mmnwcr6sm3wyqbnluo.streamlit.app/)**
+
 Steps 1-3 of the Subscriber Economics Analytics Platform (see [CLAUDE.md](CLAUDE.md)):
 step 1 pulls quarterly revenue, operating income, total debt, and cash for EchoStar
 (ECHO), Charter Communications (CHTR), and Comcast (CMCSA) directly from SEC EDGAR's
