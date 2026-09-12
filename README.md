@@ -1,9 +1,10 @@
-# SEC EDGAR XBRL Pipeline
+# SEC EDGAR XBRL Pipeline + SQL Layer
 
-Step 1 of the Subscriber Economics Analytics Platform (see [CLAUDE.md](CLAUDE.md)):
-pulls quarterly revenue, operating income, total debt, and cash for EchoStar (ECHO),
-Charter Communications (CHTR), and Comcast (CMCSA) directly from SEC EDGAR's XBRL
-`companyfacts` API, and combines them into one tidy CSV.
+Steps 1-2 of the Subscriber Economics Analytics Platform (see [CLAUDE.md](CLAUDE.md)):
+step 1 pulls quarterly revenue, operating income, total debt, and cash for EchoStar
+(ECHO), Charter Communications (CHTR), and Comcast (CMCSA) directly from SEC EDGAR's
+XBRL `companyfacts` API and combines them into one tidy CSV; step 2 loads that CSV
+into a queryable DuckDB warehouse with a handful of saved analysis queries.
 
 ## Running it
 
@@ -11,14 +12,50 @@ Charter Communications (CHTR), and Comcast (CMCSA) directly from SEC EDGAR's XBR
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 
-.venv/bin/python -m src.edgar_pipeline.main fetch      # pull + save raw JSON for all 3 companies
-.venv/bin/python -m src.edgar_pipeline.main build-csv   # extract from latest raw snapshots -> CSV
-.venv/bin/python -m src.edgar_pipeline.main run         # both, in sequence
+.venv/bin/python -m src.edgar_pipeline.main fetch          # pull + save raw JSON for all 3 companies
+.venv/bin/python -m src.edgar_pipeline.main build-csv       # extract from latest raw snapshots -> CSV
+.venv/bin/python -m src.edgar_pipeline.main load-db         # load the combined CSV into DuckDB
+.venv/bin/python -m src.edgar_pipeline.main query <name>    # run one saved query from sql/ (e.g. revenue_yoy_growth)
+.venv/bin/python -m src.edgar_pipeline.main run             # fetch -> build-csv -> load-db, in sequence
 ```
 
 Output: `data/processed/combined_quarterly.csv` -- one row per company per fiscal
 quarter. Raw, untouched API responses are saved to `data/raw/{TICKER}_companyfacts_
 {date}.json` before any processing, one snapshot per pull date, kept forever.
+`data/warehouse.duckdb` is the queryable database built from that CSV -- it's
+git-ignored (100% reproducible from the tracked CSV via `load-db`, so there's no
+reason to track a binary file).
+
+## SQL layer
+
+`load-db` builds two tables plus a view in `data/warehouse.duckdb`:
+
+- **`companies`** (3 rows): `ticker` (PK), `name`, `cik` (explicitly typed VARCHAR --
+  otherwise DuckDB's CSV auto-detection infers `cik` as an integer and silently drops
+  the leading zero, e.g. `0001091667` -> `1091667`).
+- **`quarterly_financials`** (213 rows): everything from the CSV except `company`/
+  `cik` (normalized out into `companies`), with `period_start`/`period_end`/
+  `filed_date` cast to DATE. Every `*_tag` column and `data_caveat` carry over
+  completely unchanged -- nothing about step 1's provenance/flagging work is
+  summarized away.
+- **View `v_quarterly_financials`**: everything above plus three computed booleans --
+  `is_recast`, `is_derived_q4`, `has_data_caveat` -- so queries don't have to repeat
+  the same string-matching logic. Every saved query selects from this view.
+
+Saved queries live as plain, portable `.sql` files in `sql/` (runnable standalone in
+any DuckDB client, not just through this CLI):
+
+| Query | What it does |
+|---|---|
+| `revenue_yoy_growth` | Year-over-year revenue growth % per company per quarter. |
+| `revenue_qoq_growth` | Quarter-over-quarter revenue growth %. |
+| `operating_margin_trend` | `operating_income / revenue` per company per quarter. |
+| `data_quality_summary` | Per-company counts of recast/derived-Q4/caveated/missing quarters. |
+
+Each growth/margin query includes a `growth_may_be_unreliable` /
+`margin_may_be_unreliable` column: true if either endpoint of the calculation is
+`[RECAST]`-flagged or carries a `data_caveat` (e.g. any EchoStar comparison spanning
+its Dec 2023 DISH merger, below) -- the row is still shown, never hidden, just marked.
 
 ## CSV columns
 
